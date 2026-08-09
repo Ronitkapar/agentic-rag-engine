@@ -7,7 +7,7 @@ def chunk_text(text: str, chunk_size: int = 1500) -> List[str]:
     Ensures chunks do not exceed the specified size.
     """
     with logfire.span("✂️ Text Chunking", text_length=len(text)):
-        if not text.strip(): 
+        if not text.strip():  
             return []
             
         paragraphs = text.split("\n\n")
