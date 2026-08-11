@@ -26,19 +26,19 @@ except Exception as e:
     
 
 
-# --- PAGE CONFIG ---
+# PAGE CONFIG
 st.set_page_config(
     page_title="Enterprise Agentic RAG",
     page_icon="🤖",
     layout="wide",
 )
 
-# --- AVATARS ---
+# emojie
 AI_AVATAR = "🤖"
 USER_AVATAR = "👤"
 
 
-# --- SESSION MANAGEMENT ---
+# SESSION MANAGEMENT 
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     logfire.info(f"✨ New User Session Created: {st.session_state.session_id}")
@@ -47,7 +47,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-# --- SIDEBAR ---
+# SIDEBAR 
 with st.sidebar:
     st.title("🧠 Agent OS")
     st.markdown("---")
@@ -60,7 +60,7 @@ with st.sidebar:
         st.session_state.session_id = str(uuid.uuid4())
         st.rerun()
 
-# --- MAIN CHAT ---
+# MAIN CHAT 
 st.title("🤖 Enterprise Agentic Assistant")
 
 
