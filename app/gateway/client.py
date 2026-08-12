@@ -28,7 +28,7 @@ portkey_client = Portkey(
 )
 
 
-def get_langchain_llm(feature: str = "rag") -> ChatOpenAI:
+def get_langchain_llm(feature: str = "rag-app") -> ChatOpenAI:
     """
     Returns a Portkey-backed ChatOpenAI — a drop-in for ChatGroq in LangChain nodes.
 
