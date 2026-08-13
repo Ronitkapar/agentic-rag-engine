@@ -1,20 +1,30 @@
 import os
+import sys
 import streamlit as st
 import time
 import uuid
 from dotenv import load_dotenv
 
-from app.agents.graph import rag_agent
-
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 # Load environment variables explicitly from the root directory
-env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+env_path = os.path.join(ROOT_DIR, ".env")
 load_dotenv(dotenv_path=env_path)
 
 try:
     import logfire
 except Exception:
     logfire = None
+
+
+@st.cache_resource(show_spinner=False)
+def _load_rag_agent():
+    # Import lazily so Streamlit can boot even if optional runtime deps are missing.
+    from app.agents.graph import rag_agent
+
+    return rag_agent
 
 
 def _get_secret(key: str, default: str = "") -> str:
@@ -105,6 +115,7 @@ if prompt := st.chat_input("Ask about your documentation..."):
         with st.chat_message("assistant", avatar=AI_AVATAR):
             with st.status("🔍 Agent is thinking...", expanded=True) as status:
                 try:
+                    rag_agent = _load_rag_agent()
                     # Streamlit-only deployment:
                     # Call the agent graph directly instead of POSTing to a backend.
                     # backend_url = _get_setting("BACKEND_URL", "http://localhost:8000")
