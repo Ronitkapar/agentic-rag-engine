@@ -1,6 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# CRITICAL: logfire must be configured before all other imports
-# ─────────────────────────────────────────────────────────────────────────────
 import os
 import sys
 
@@ -12,7 +9,6 @@ load_dotenv()
 import logfire
 logfire.configure(token=os.getenv("LOGFIRE_TOKEN"), service_name="evals")
 
-# ─────────────────────────────────────────────────────────────────────────────
 import asyncio
 import json
 import nest_asyncio
@@ -25,18 +21,14 @@ from evals.pipeline import run_pipeline, load_golden_dataset
 from evals.guardrails_eval import run_guardrails_eval, compute_guardrails_metrics
 from evals.metrics import run_all_metrics
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Page config
-# ─────────────────────────────────────────────────────────────────────────────
+
 st.set_page_config(
     page_title="Enterprise RAG — Eval Suite",
     page_icon="🧪",
     layout="wide",
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
+
 SCORE_COLORS = {
     "green":  "#d4edda",
     "yellow": "#fff3cd",
@@ -82,9 +74,6 @@ def _run_async(coro):
     return loop.run_until_complete(coro)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Session state init
-# ─────────────────────────────────────────────────────────────────────────────
 if "golden" not in st.session_state:
     st.session_state.golden = load_golden_dataset()
 if "pipeline_done" not in st.session_state:
@@ -100,26 +89,17 @@ if "pipeline_rows" not in st.session_state:
 
 golden = st.session_state.golden
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Header
-# ─────────────────────────────────────────────────────────────────────────────
 st.title("🧪 Enterprise RAG — Evaluation Suite")
 st.caption(
     "Step 1: Review ground truth → Step 2: Run live pipeline → Step 3: Score with RAGAS"
 )
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tabs
-# ─────────────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(
     ["📋 Step 1 — Ground Truth", "🚀 Step 2 — Live Pipeline", "📊 Step 3 — Eval Metrics"]
 )
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# TAB 1 — Ground Truth
-# ═════════════════════════════════════════════════════════════════════════════
 with tab1:
     st.subheader("Ground Truth Dataset")
     st.markdown(
@@ -165,9 +145,7 @@ with tab1:
         st.json(golden)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Live Pipeline
-# ═════════════════════════════════════════════════════════════════════════════
+
 with tab2:
     st.subheader("Live Pipeline — Collect Real Responses")
     st.markdown(
@@ -237,7 +215,7 @@ with tab2:
         progress_bar.progress(100, text="✅ All responses collected!")
         status_slot.success(f"💾 {len(enriched['rag_samples'])} responses stored in session.")
 
-        # ── Guardrails tests ──────────────────────────────────────────────────
+        # Guardrails tests 
         st.divider()
         st.subheader("Guardrails Tests")
         g_progress = st.progress(0, text="Running guardrails tests...")
@@ -316,9 +294,6 @@ with tab2:
             mc4.metric("Accuracy", f"{gm['accuracy']:.2f}")
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Eval Metrics
-# ═════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.subheader("Eval Metrics — RAGAS + Tool Correctness")
 
@@ -388,7 +363,7 @@ with tab3:
                 if key in st.session_state.metric_results:
                     _render_metric_table(st.session_state.metric_results[key], key, title)
 
-        # ── Final Summary ─────────────────────────────────────────────────────
+        # Final Summary 
         if st.session_state.metric_results:
             st.divider()
             st.subheader("Final Summary")

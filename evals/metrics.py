@@ -110,7 +110,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None) -> dict:
 
     with logfire.span("🧪 Eval Phase 2 — All Metrics", total_samples=len(samples)):
 
-        # ── Exp 1: Faithfulness ───────────────────────────────────────────────
+        # Exp 1: Faithfulness 
         if status_cb:
             status_cb(f"🧪 Exp 1/6 — Faithfulness ({len(samples)} samples)...")
         with logfire.span("🧪 Exp 1 — Faithfulness"):
@@ -129,7 +129,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None) -> dict:
 
         await _cooldown(COOLDOWN_STANDARD, "Faithfulness", status_cb)
 
-        # ── Exp 2: Answer Relevancy ───────────────────────────────────────────
+        # Exp 2: Answer Relevancy 
         if status_cb:
             status_cb(f"🧪 Exp 2/6 — Answer Relevancy ({len(samples)} samples)...")
         with logfire.span("🧪 Exp 2 — Answer Relevancy"):
@@ -147,7 +147,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None) -> dict:
 
         await _cooldown(COOLDOWN_STANDARD, "Answer Relevancy", status_cb)
 
-        # ── Exp 3: Context Precision ──────────────────────────────────────────
+        # Exp 3: Context Precision 
         if status_cb:
             status_cb(f"🧪 Exp 3/6 — Context Precision ({len(samples)} samples)...")
         with logfire.span("🧪 Exp 3 — Context Precision"):
@@ -166,7 +166,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None) -> dict:
 
         await _cooldown(COOLDOWN_STANDARD, "Context Precision", status_cb)
 
-        # ── Exp 4: Context Recall ─────────────────────────────────────────────
+        # Exp 4: Context Recall 
         if status_cb:
             status_cb(f"🧪 Exp 4/6 — Context Recall ({len(samples)} samples)...")
         with logfire.span("🧪 Exp 4 — Context Recall"):
@@ -185,7 +185,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None) -> dict:
 
         await _cooldown(COOLDOWN_STANDARD, "Context Recall", status_cb)
 
-        # ── Exp 5: Answer Correctness (split into batches) ────────────────────
+        # Exp 5: Answer Correctness (split into batches) 
         if status_cb:
             status_cb(f"🧪 Exp 5/6 — Answer Correctness batch 1/2...")
         with logfire.span("🧪 Exp 5 — Answer Correctness"):
@@ -207,7 +207,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None) -> dict:
 
         await _cooldown(COOLDOWN_STANDARD, "Answer Correctness", status_cb)
 
-        # ── Exp 6: Tool Correctness (no LLM — Jaccard) ───────────────────────
+        # Exp 6: Tool Correctness (no LLM — Jaccard) 
         if status_cb:
             status_cb("⚡ Exp 6/6 — Tool Correctness (zero LLM calls)...")
         with logfire.span("🧪 Exp 6 — Tool Correctness"):

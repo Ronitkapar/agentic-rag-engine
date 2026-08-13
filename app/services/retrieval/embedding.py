@@ -11,7 +11,7 @@ _active_model = None
 _model_type: str | None = None  # "gemini" or "fallback"
 
 
-# ── Model initialisation ───────────────────────────────────────────────────────
+#  Model initialisation 
 
 def _probe_gemini():
     """Try one embed call to verify Gemini is reachable. Returns model or None."""
@@ -49,7 +49,7 @@ def _init():
         _model_type = "fallback"
 
 
-# ── Public helpers ─────────────────────────────────────────────────────────────
+#  Public helpers 
 
 def get_embedding_dim() -> int:
     """Return the vector dimension for the active model. Call after _init()."""
@@ -57,7 +57,7 @@ def get_embedding_dim() -> int:
     return _GEMINI_DIM if _model_type == "gemini" else _FALLBACK_DIM
 
 
-# ── Batch embedding with retry ─────────────────────────────────────────────────
+#  Batch embedding with retry 
 
 def _embed_batch(batch: list[str]) -> list[list[float]]:
     if _model_type == "gemini":
@@ -83,7 +83,7 @@ def _embed_batch(batch: list[str]) -> list[list[float]]:
         return _active_model.encode(batch, show_progress_bar=False).tolist()
 
 
-# ── Public API (same signatures as before) ─────────────────────────────────────
+#  Public API (same signatures as before) 
 
 def embed_query(query: str) -> list[float]:
     _init()
