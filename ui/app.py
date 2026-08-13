@@ -1,9 +1,10 @@
 import os
 import streamlit as st
-import requests
 import time
 import uuid
 from dotenv import load_dotenv
+
+from app.agents.graph import rag_agent
 
 
 # Load environment variables explicitly from the root directory
@@ -104,23 +105,34 @@ if prompt := st.chat_input("Ask about your documentation..."):
         with st.chat_message("assistant", avatar=AI_AVATAR):
             with st.status("🔍 Agent is thinking...", expanded=True) as status:
                 try:
-                    # DISTRIBUTED TRACE: Calling Backend
-                    backend_span = logfire.span("📡 Calling RAG Backend") if logfire and LOGFIRE_STATUS == "Connected & Tracing" else None
-                    if backend_span:
-                        backend_span.__enter__()
+                    # Streamlit-only deployment:
+                    # Call the agent graph directly instead of POSTing to a backend.
+                    # backend_url = _get_setting("BACKEND_URL", "http://localhost:8000")
+                    # response = requests.post(f"{backend_url}/query", json=payload, timeout=60)
+                    initial_state = {
+                        "messages": [{"role": "user", "content": prompt}],
+                        "current_query": prompt,
+                        "documents": [],
+                        "plan": ["Start"],
+                        "status": "Initializing Graph...",
+                        "final_answer": "",
+                    }
+                    config = {"configurable": {"thread_id": st.session_state.session_id}}
+
+                    graph_span = logfire.span("📡 Calling RAG Graph") if logfire and LOGFIRE_STATUS == "Connected & Tracing" else None
+                    if graph_span:
+                        graph_span.__enter__()
                     try:
-                        # Get backend URL from env, or default to local if not set.
-                        # Local/AWS note:
-                        # base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
-                        # For Streamlit Cloud / Render, set BACKEND_URL in Streamlit secrets.
-                        base_url = _get_setting("BACKEND_URL", "http://localhost:8000")
-                        url = f"{base_url}/query"
-                        payload = {"q": prompt, "thread_id": st.session_state.session_id}
-                        response = requests.post(url, json=payload, timeout=60)
-                        data = response.json()
+                        final_output = rag_agent.invoke(initial_state, config=config)
+                        data = {
+                            "answer": final_output.get("final_answer", "No response."),
+                            "thought_process": final_output.get("plan", []),
+                            "status": final_output.get("status", "unknown"),
+                            "sources": final_output.get("documents", []),
+                        }
                     finally:
-                        if backend_span:
-                            backend_span.__exit__(None, None, None)
+                        if graph_span:
+                            graph_span.__exit__(None, None, None)
                     
                     # Show Reasoning Steps from Backend
                     steps = data.get("thought_process", [])
@@ -140,9 +152,9 @@ if prompt := st.chat_input("Ask about your documentation..."):
                                     st.info(source)
                 except Exception as e:
                     if logfire and LOGFIRE_STATUS == "Connected & Tracing":
-                        logfire.error(f"❌ UI-Backend Connection Failed: {e}")
+                        logfire.error(f"❌ UI-Graph Execution Failed: {e}")
                     status.update(label="❌ Connection Failed", state="error")
-                    st.error("Backend Offline.")
+                    st.error("Agent execution failed.")
                     st.stop()
 
             # Final Answer Streaming
