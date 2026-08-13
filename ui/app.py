@@ -3,7 +3,6 @@ import streamlit as st
 import requests
 import time
 import uuid
-import logfire
 from dotenv import load_dotenv
 
 
@@ -11,15 +10,33 @@ from dotenv import load_dotenv
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
 load_dotenv(dotenv_path=env_path)
 
+try:
+    import logfire
+except Exception:
+    logfire = None
+
+
+def _get_secret(key: str, default: str = "") -> str:
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
+def _get_setting(key: str, default: str = "") -> str:
+    # Local dev uses .env. Streamlit Cloud uses secrets.
+    return os.getenv(key) or _get_secret(key, default)
+
 
 # Initialize Logfire
 try:
-    token = os.getenv("LOGFIRE_TOKEN")
-    if not token:
-        print("ERROR: LOGFIRE_TOKEN is empty or None!")
-    logfire.configure(token=token)
-    # logfire.instrument_requests() # Disabled due to OpenTelemetry bug on Windows: MeterProvider.get_meter() got multiple values for argument 'version'
-    LOGFIRE_STATUS = "Connected & Tracing"
+    token = _get_setting("LOGFIRE_TOKEN", "")
+    if logfire and token:
+        logfire.configure(token=token)
+        # logfire.instrument_requests() # Disabled due to OpenTelemetry bug on Windows: MeterProvider.get_meter() got multiple values for argument 'version'
+        LOGFIRE_STATUS = "Connected & Tracing"
+    else:
+        LOGFIRE_STATUS = "Off"
 except Exception as e:
     print(f"Logfire Init Error in UI: {e}")
     LOGFIRE_STATUS = f"Standby (Error: {e})"
@@ -41,7 +58,8 @@ USER_AVATAR = "👤"
 # SESSION MANAGEMENT 
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
-    logfire.info(f"✨ New User Session Created: {st.session_state.session_id}")
+    if logfire and LOGFIRE_STATUS == "Connected & Tracing":
+        logfire.info(f"✨ New User Session Created: {st.session_state.session_id}")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -55,7 +73,8 @@ with st.sidebar:
     st.info(f"Memory ID: {st.session_state.session_id[:8]}")
     
     if st.button("🗑️ Clear History & Memory", width="stretch", type="primary"):
-        logfire.warn(f"🗑️ Memory Wipe Triggered for session: {st.session_state.session_id}")
+        if logfire and LOGFIRE_STATUS == "Connected & Tracing":
+            logfire.warn(f"🗑️ Memory Wipe Triggered for session: {st.session_state.session_id}")
         st.session_state.messages = []
         st.session_state.session_id = str(uuid.uuid4())
         st.rerun()
@@ -73,8 +92,10 @@ for message in st.session_state.messages:
 # Chat Input
 if prompt := st.chat_input("Ask about your documentation..."):
     # START TRACE: User Interaction
-    with logfire.span("💬 User Chat Interaction", user_query=prompt, session_id=st.session_state.session_id):
-        
+    chat_span = logfire.span("💬 User Chat Interaction", user_query=prompt, session_id=st.session_state.session_id) if logfire and LOGFIRE_STATUS == "Connected & Tracing" else None
+    if chat_span:
+        chat_span.__enter__()
+    try:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar=USER_AVATAR):
             st.markdown(prompt)
@@ -84,13 +105,22 @@ if prompt := st.chat_input("Ask about your documentation..."):
             with st.status("🔍 Agent is thinking...", expanded=True) as status:
                 try:
                     # DISTRIBUTED TRACE: Calling Backend
-                    with logfire.span("📡 Calling RAG Backend"):
-                        # Get backend URL from env, or default to local if not set
-                        base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+                    backend_span = logfire.span("📡 Calling RAG Backend") if logfire and LOGFIRE_STATUS == "Connected & Tracing" else None
+                    if backend_span:
+                        backend_span.__enter__()
+                    try:
+                        # Get backend URL from env, or default to local if not set.
+                        # Local/AWS note:
+                        # base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+                        # For Streamlit Cloud / Render, set BACKEND_URL in Streamlit secrets.
+                        base_url = _get_setting("BACKEND_URL", "http://localhost:8000")
                         url = f"{base_url}/query"
                         payload = {"q": prompt, "thread_id": st.session_state.session_id}
                         response = requests.post(url, json=payload, timeout=60)
                         data = response.json()
+                    finally:
+                        if backend_span:
+                            backend_span.__exit__(None, None, None)
                     
                     # Show Reasoning Steps from Backend
                     steps = data.get("thought_process", [])
@@ -109,7 +139,8 @@ if prompt := st.chat_input("Ask about your documentation..."):
                                 with st.expander(f"Chunk {i+1}: {preview}"):
                                     st.info(source)
                 except Exception as e:
-                    logfire.error(f"❌ UI-Backend Connection Failed: {e}")
+                    if logfire and LOGFIRE_STATUS == "Connected & Tracing":
+                        logfire.error(f"❌ UI-Backend Connection Failed: {e}")
                     status.update(label="❌ Connection Failed", state="error")
                     st.error("Backend Offline.")
                     st.stop()
@@ -126,4 +157,8 @@ if prompt := st.chat_input("Ask about your documentation..."):
             
             answer_placeholder.markdown(full_answer)
             st.session_state.messages.append({"role": "assistant", "content": full_answer})
-            logfire.info("✅ Chat cycle completed successfully.")
+            if logfire and LOGFIRE_STATUS == "Connected & Tracing":
+                logfire.info("✅ Chat cycle completed successfully.")
+    finally:
+        if chat_span:
+            chat_span.__exit__(None, None, None)
