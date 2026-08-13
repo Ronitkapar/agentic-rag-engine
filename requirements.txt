@@ -28,6 +28,7 @@ langchain-google-vertexai   # Required shim for NeMo Guardrails internal import 
 langchain-community         # Community-contributed tools and loaders
 langchain-openai            # OpenAI-compatible layer (used by Portkey gateway)
 pydantic>=2.0.0             # Data validation and settings management
+transformers<4.53.0         # Avoid import regressions in the sentence-transformers fallback
 
 # --- DATA INGESTION & DOCUMENT PARSING ---
 unstructured                # Base library for DOCX/PPTX partitioning
@@ -55,7 +56,8 @@ deepeval                    # Pytest-compatible test runner wrapping RAGAS & saf
 langfuse                    # Live production monitoring, tracing & user feedback collection
 
 # --- EMBEDDINGS (SENTENCE TRANSFORMERS) ---
-sentence-transformers       # Used by FlashRank reranker internally
+sentence-transformers==3.0.1       # Used by FlashRank reranker internally
+huggingface-hub==0.25.2            # Keep cached_download available for the installed ML stack
 langchain_google_genai
 
 langchain-google-vertexai
