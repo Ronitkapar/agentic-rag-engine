@@ -64,6 +64,7 @@ GROQ_API_KEY=
 GROQ_FALLBACK_API_KEY=
 PORTKEY_API_KEY=
 PORTKEY_CONFIG_SLUG=
+USE_PORTKEY=false
 QDRANT_API_KEY=
 QDRANT_CLUSTER_ENDPOINT=
 GEMINI_API_KEY=
@@ -103,15 +104,29 @@ streamlit run ui/app.py
 
 Docker (recommended for reproducible runs)
 
-Build and start containers for both services:
-
 ```bash
+# First time / after code changes (rebuild images and start):
 docker compose up -d --build
+
+# Later (images already built — just start):
+docker compose up -d
+
+# Stop:
+docker compose down
+
+# View logs:
+docker compose logs -f backend
 ```
 
 Service endpoints after docker-compose:
 - Backend: http://localhost:8000
 - Frontend (Streamlit): http://localhost:8501
+- API docs (Swagger): http://localhost:8000/docs
+
+Notes:
+- If you get `permission denied while trying to connect to the docker API`, run `newgrp docker` (or log out & back in) so your terminal picks up the `docker` group membership.
+- The backend has a built-in healthcheck; the frontend waits for the backend to be healthy before starting.
+- Portkey is optional: set `USE_PORTKEY=true` in `.env` only when your saved Portkey config targets live models (e.g. `openai/gpt-oss-120b`). Otherwise the app calls Groq directly.
 
 Testing & Evaluation
 

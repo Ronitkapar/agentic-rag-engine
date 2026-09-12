@@ -9,8 +9,13 @@ __pycache__
 .venv
 venv
 env
+renv
+.renv
 DATA
 processed_data
 evals
 *.log
 .env
+.deepeval
+.logfire
+.ruff_cache
