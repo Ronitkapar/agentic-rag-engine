@@ -1,41 +1,63 @@
 # Enterprise Agentic RAG
 
-An agentic retrieval-augmented generation app built with FastAPI, LangGraph, Streamlit, Qdrant, and external LLM tooling. The project provides:
+A production-ready, modular Retrieval-Augmented Generation (RAG) application combining retrieval, LLM orchestration, guardrails, and a Streamlit chat UI. Built with FastAPI, LangGraph-style agent graphs, Qdrant vector search, and pluggable LLM gateway integrations.
 
-- a backend API for retrieval, guardrails, and response generation
-- a Streamlit chat UI for interacting with the system
-- evaluation utilities for measuring retrieval and guardrail quality
+Purpose: provide a reusable backend for safe, explainable LLM responses grounded in indexed source documents, and a simple frontend for exploration and evaluation.
 
-## Features
+Highlights
+- Full backend API for retrieval, reranking, and response generation
+- Streamlit chat UI with provenance / source previews
+- Qdrant-based embeddings and vector search with reranking
+- Guardrails for request filtering, red-teaming, and safety handling
+- Modular gateway for external LLM providers (pluggable integrations)
+- Evaluation utilities for retrieval and guardrail behaviour
 
-- FastAPI backend with a `/query` endpoint
-- Streamlit frontend with chat history and source previews
-- Qdrant-based vector search
-- reranking and retrieval pipeline
-- guardrails for request filtering and safety handling
-- logging and tracing support through Logfire
-- evaluation scripts under `evals/`
+Quick links
+- Backend entry: `app/main.py`
+- Streamlit UI: `ui/app.py`
+- Retrieval services: `app/services/retrieval/`
+- Agent graph: `app/agents/graph.py`
+- Guardrails: `app/guardrails/`
+- Evaluation & metrics: `evals/`
 
-## Project Structure
+Architecture overview
 
-- `app/main.py` - FastAPI entrypoint
-- `ui/app.py` - Streamlit UI
-- `app/agents/` - graph and agent nodes
-- `app/services/retrieval/` - embeddings, Qdrant search, reranking
-- `app/guardrails/` - guardrail configuration and rules
-- `app/gateway/` - LLM gateway client setup
-- `evals/` - evaluation scripts, metrics, and datasets
-- `DATA/` - source documents used for ingestion and testing
+1. Ingestion & Indexing
+	- Document loaders and chunking create JSON/text chunks stored as embeddings in Qdrant.
 
-## Prerequisites
+2. Retrieval Layer
+	- Embedding model produces vectors for queries and documents.
+	- Qdrant performs ANN search; results are optionally reranked by a reranker module to improve relevance.
 
+3. Agent & Orchestration
+	- LangGraph-style agent nodes (in `app/agents/`) implement retrieval, reasoning, and post-processing flows.
+	- A gateway layer (`app/gateway/`) abstracts LLM provider calls so you can plug in different APIs.
+
+4. Guardrails & Safety
+	- Guardrail rules and policies live under `app/guardrails/` and run before/after LLM calls to enforce safety and policy constraints.
+
+5. API & UI
+	- FastAPI exposes endpoints (e.g., `/query`) consumed by the Streamlit UI or other clients.
+	- Streamlit UI provides a conversational chat experience with source citations and history.
+
+Project layout (important files)
+- `app/main.py` — FastAPI application and API routes
+- `app/agents/graph.py` — agent graph definition and nodes
+- `app/services/retrieval/` — embeddings, Qdrant client, search & reranking logic
+- `app/guardrails/` — safety rules, guardrail definitions
+- `app/gateway/` — LLM gateway client and provider integrations
+- `ui/app.py` — Streamlit front-end
+- `evals/` — evaluation utilities, datasets, and scripts
+- `DATA/` — raw documents used for ingestion/testing
+
+Requirements & prerequisites
 - Python 3.11+
-- access to your model and gateway credentials
-- a running Qdrant instance or Qdrant Cloud cluster
+- Qdrant instance or Qdrant Cloud (accessible via `QDRANT_CLUSTER_ENDPOINT`)
+- API keys / credentials for any LLM provider or gateway used
+- Recommended: create a virtual environment for local development
 
-## Environment Variables
-
-Create a `.env` file in the project root with the following values:
+Environment variables
+Create a `.env` file in the repository root with the following keys (values depend on your provider):
 
 ```env
 GROQ_API_KEY=
@@ -50,16 +72,12 @@ BACKEND_URL=http://localhost:8000
 ```
 
 Notes:
+- `QDRANT_CLUSTER_ENDPOINT` should point at your Qdrant HTTP endpoint (or leave blank to use localhost).
+- `BACKEND_URL` is used by the Streamlit UI to call the backend when running the UI separately.
 
-- `QDRANT_CLUSTER_ENDPOINT` should point to your Qdrant cluster URL
-- `BACKEND_URL` is used by the Streamlit UI to call the backend
-- if you deploy the UI on Streamlit Community Cloud, set `BACKEND_URL` in Streamlit secrets
+Local development: step-by-step
 
-## Local Setup
-
-1. Clone the repository.
-2. Create and activate a virtual environment.
-3. Install dependencies.
+1) Create & activate a Python virtual environment
 
 ```bash
 python -m venv .venv
@@ -67,85 +85,65 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-4. Create your `.env` file.
-5. Start the backend:
+2) Configure `.env` with your credentials and Qdrant endpoint.
+
+3) Start the backend (FastAPI)
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-6. In a second terminal, start the Streamlit UI:
+4) In a new terminal, start the Streamlit UI
 
 ```bash
 streamlit run ui/app.py
 ```
 
-## Docker Setup
+5) Open the UI at `http://localhost:8501` and the backend at `http://localhost:8000`.
 
-This repo also includes Docker support.
+Docker (recommended for reproducible runs)
 
-Build and run both services:
-
-```bash
-docker compose up -d --build
-```
-
-Backend:
-- `http://localhost:8000`
-
-Frontend:
-- `http://localhost:8501`
-
-## Deployment Options
-
-### Option 1: Streamlit Community Cloud for the UI
-
-This is a good choice if you want the frontend hosted by Streamlit.
-
-1. Push the repo to GitHub.
-2. Deploy `ui/app.py` on Streamlit Community Cloud.
-3. Add secrets in the Streamlit app settings.
-4. Make sure `BACKEND_URL` points to a public backend URL.
-
-Example Streamlit secret:
-
-```toml
-BACKEND_URL = "https://your-backend-domain.com"
-LOGFIRE_TOKEN = "your-logfire-token"
-```
-
-### Option 2: AWS EC2 with Docker
-
-This repo can also be deployed on a single EC2 instance.
-
-1. Launch an Ubuntu EC2 instance.
-2. Install Docker and Docker Compose.
-3. Copy the repo to the server.
-4. Add the `.env` file.
-5. Run:
+Build and start containers for both services:
 
 ```bash
 docker compose up -d --build
 ```
 
-6. Put Nginx in front if you want a clean domain and HTTPS.
+Service endpoints after docker-compose:
+- Backend: http://localhost:8000
+- Frontend (Streamlit): http://localhost:8501
 
-## Evaluation
+Testing & Evaluation
 
-The `evals/` folder contains scripts and datasets for evaluating:
+- The `evals/` folder contains scripts to measure retrieval accuracy, guardrail enforcement, and response quality. Use these scripts to validate changes to retrievers or guards before deploying.
 
-- retrieval quality
-- guardrail behavior
-- response quality
+Common development tasks
+- Reindex data: implement or run ingestion scripts in `app/ingestion/`
+- Add a new LLM provider: extend `app/gateway/` with a provider client and register it in the gateway
+- Update guardrails: modify or add rules in `app/guardrails/`
 
-Use these utilities if you want to validate changes before shipping updates.
+Troubleshooting
+- Streamlit cannot reach backend: verify `BACKEND_URL` and CORS settings in `app/main.py`.
+- Qdrant connectivity issues: verify `QDRANT_CLUSTER_ENDPOINT`, API key, and network access.
+- Missing model credentials: set the appropriate environment variables and restart the services.
 
-## Notes
+Security & privacy
+- Secrets: keep API keys out of source control. Use environment variables, a secrets manager, or container secrets.
+- Data handling: be mindful of PII in ingested documents. Add redaction or data minimization steps in the ingestion pipeline if needed.
 
-- The app relies on external APIs, so missing credentials will cause runtime failures.
-- If the Streamlit UI cannot reach the backend, check `BACKEND_URL`.
-- If retrieval fails, check your Qdrant URL, API key, and collection name.
+Next steps & extension ideas
+- Add automated ingestion pipelines for external content sources (S3, Google Drive, web crawlers).
+- Add production-ready logging, monitoring, and tracing integrations.
+- Add role-based access control on the API and UI for multi-tenant deployments.
 
-## License
+Contributing
+- Use standard Git workflow: feature branches, descriptive PR titles, and tests for new behavior.
+- Run linters and tests before opening a PR.
 
-No license has been specified yet.
+License
+- No license specified — add a LICENSE file to set the project's terms.
+
+Contact
+- For questions about this repo, open an issue or contact the maintainer.
+
+Enjoy building with RAG!
