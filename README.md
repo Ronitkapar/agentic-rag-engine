@@ -133,7 +133,21 @@ Testing & Evaluation
 - The `evals/` folder contains scripts to measure retrieval accuracy, guardrail enforcement, and response quality. Use these scripts to validate changes to retrievers or guards before deploying.
 
 Common development tasks
-- Reindex data: implement or run ingestion scripts in `app/ingestion/`
+- Reindex data (creates the Qdrant collection if missing):
+
+```bash
+# Index just the core documents (fast):
+python -m app.ingestion.processor DATA/true_data
+
+# Index everything incl. the noisy corpus (slow, uses embedding API quota):
+python -m app.ingestion.processor DATA --wipe
+```
+
+> Note: the Qdrant collection dimension is chosen by whichever embedding model is
+> active at ingestion time (Gemini 3072-dim, or the local sentence-transformers
+> fallback at 768-dim). Queries use the same probe, so keep the Gemini key valid
+> or re-run ingestion after changing embedding models — otherwise dimensions mismatch.
+
 - Add a new LLM provider: extend `app/gateway/` with a provider client and register it in the gateway
 - Update guardrails: modify or add rules in `app/guardrails/`
 
