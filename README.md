@@ -67,7 +67,13 @@ PORTKEY_CONFIG_SLUG=
 USE_PORTKEY=false
 QDRANT_API_KEY=
 QDRANT_CLUSTER_ENDPOINT=
-GEMINI_API_KEY=
+# Embeddings — backend chosen at runtime: aicredits | local
+EMBEDDING_PROVIDER=aicredits
+AICREDITS_API_KEY=
+AICREDITS_BASE_URL=https://api.aicredits.in/v1
+AICREDITS_EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_BATCH_SIZE=50
+EMBEDDING_ALLOW_LOCAL_FALLBACK=true
 LOGFIRE_TOKEN=
 BACKEND_URL=http://localhost:8000
 ```
@@ -143,10 +149,34 @@ python -m app.ingestion.processor DATA/true_data
 python -m app.ingestion.processor DATA --wipe
 ```
 
-> Note: the Qdrant collection dimension is chosen by whichever embedding model is
-> active at ingestion time (Gemini 3072-dim, or the local sentence-transformers
-> fallback at 768-dim). Queries use the same probe, so keep the Gemini key valid
-> or re-run ingestion after changing embedding models — otherwise dimensions mismatch.
+> Note: the embedding backend is chosen by `EMBEDDING_PROVIDER` (`aicredits` or
+> `local`) and its vector dimension is **probed from the live provider** at startup
+> (`text-embedding-3-large` → 3072-dim, `local` → 768-dim). The Qdrant collection is
+> created with that probed size, and ingestion refuses to write into an existing
+> collection whose size differs, telling you to re-run with `--wipe`.
+>
+> Switching backends is **not** only a dimension question: even when the dims match,
+> the model spaces are not interchangeable. The backend that built the index is recorded
+> in `processed_data/.embedding_index_meta.json` and a mismatch is logged as a warning.
+> Always re-ingest with `--wipe` after changing `EMBEDDING_PROVIDER` or an embedding
+> model id.
+
+### Embedding providers (verified live)
+
+| `EMBEDDING_PROVIDER` | Backend | Model | Dim | Notes |
+|---|---|---|---|---|
+| `aicredits` | api.aicredits.in `/v1/embeddings` | `text-embedding-3-large` | 3072 | **Default.** OpenAI-compatible gateway (₹ / UPI billing). Serves **only** OpenAI embedding models (`text-embedding-3-large/small/ada-002`). Every Gemini id returns `400 invalid model ID` (bare *and* `provider/`-prefixed) even though the public catalog (`/api/models`) advertises them with `supported_apis: ['embeddings']`; that route also rejects the `provider/model` prefix notation. |
+| `local` | sentence-transformers | `all-mpnet-base-v2` | 768 | Offline, no API key. Also the automatic fallback when the AICredits probe fails. |
+
+Switching between the two requires re-ingesting with `--wipe` — the dims (3072 vs 768)
+and the model spaces both differ. The dim-guard and fingerprint warnings will tell you
+if you forget.
+
+Inspect the live backend at any time:
+
+```bash
+python -c "from app.services.retrieval.embedding import active_embedding_info; print(active_embedding_info())"
+```
 
 - Add a new LLM provider: extend `app/gateway/` with a provider client and register it in the gateway
 - Update guardrails: modify or add rules in `app/guardrails/`

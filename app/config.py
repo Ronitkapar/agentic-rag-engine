@@ -5,6 +5,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _bool_env(name: str, default: str = "false") -> bool:
+    """Read a boolean-ish env var ('1', 'true', 'yes' are all truthy)."""
+    return os.getenv(name, default).strip().lower() in ("1", "true", "yes")
+
+
+def _int_env(name: str, default: str) -> int:
+    """Read an int env var, falling back to the default if unset or malformed."""
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _optional_int_env(name: str):
+    """Read an optional int env var. Returns None when unset or blank."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 class Settings:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     GROQ_FALLBACK_API_KEY = os.getenv("GROQ_FALLBACK_API_KEY")
@@ -22,6 +47,29 @@ class Settings:
     QDRANT_URL = os.getenv("QDRANT_CLUSTER_ENDPOINT")
     QDRANT_COLLECTION = "rag-app"
 
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    # --- Embedding provider selection ---
+    # "aicredits" → OpenAI-compatible gateway (api.aicredits.in)
+    # "local"     → offline sentence-transformers (no API key required)
+    EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "aicredits").strip().lower()
+
+    # AICredits gateway — OpenAI-compatible. Its /v1/embeddings route serves ONLY
+    # OpenAI embedding models (verified: text-embedding-3-large/small/ada-002).
+    # Google/Gemini ids return 400 "invalid model ID" there despite the catalog.
+    AICREDITS_API_KEY = os.getenv("AICREDITS_API_KEY")
+    AICREDITS_BASE_URL = os.getenv("AICREDITS_BASE_URL", "https://api.aicredits.in/v1")
+    AICREDITS_EMBEDDING_MODEL = os.getenv(
+        "AICREDITS_EMBEDDING_MODEL", "text-embedding-3-large"
+    )
+
+    # Offline fallback — used when EMBEDDING_PROVIDER=local (or as last resort)
+    EMBEDDING_LOCAL_MODEL = os.getenv("EMBEDDING_LOCAL_MODEL", "all-mpnet-base-v2")
+
+    EMBEDDING_BATCH_SIZE = _int_env("EMBEDDING_BATCH_SIZE", "50")
+    # When the selected cloud provider fails its probe, fall back to the local
+    # model instead of hard-failing. The ingestion dim-guard still refuses to
+    # write mismatched vectors into an existing collection.
+    EMBEDDING_ALLOW_LOCAL_FALLBACK = _bool_env("EMBEDDING_ALLOW_LOCAL_FALLBACK", "true")
+    # Optional MRL truncation — only sent when the provider honours `dimensions`.
+    EMBEDDING_DIMENSIONS = _optional_int_env("EMBEDDING_DIMENSIONS")
 
 settings = Settings()

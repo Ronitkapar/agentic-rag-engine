@@ -4,13 +4,15 @@ import os
 import sys
 import uuid
 import json
+from datetime import datetime, timezone
+
 import logfire
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 from app.config import settings
-from app.services.retrieval.embedding import embed_texts, get_embedding_dim
+from app.services.retrieval.embedding import active_embedding_info, embed_texts
 from app.ingestion.loaders.pdf import parse_pdf
 from app.ingestion.loaders.html import parse_html
 from app.ingestion.loaders.text import parse_text
@@ -26,6 +28,68 @@ qdrant_client = QdrantClient(
     url=settings.QDRANT_URL,
     api_key=settings.QDRANT_API_KEY,
 )
+
+# Records which embedding backend built the current index. Dimensions alone
+# cannot detect a provider switch (aicredits and google both emit 3072-dim
+# vectors) but the two vector spaces are NOT interchangeable.
+INDEX_META_PATH = os.path.join(PROCESSED_DATA_DIR, ".embedding_index_meta.json")
+
+
+def _collection_dim(collection_name: str):
+    """Vector size of an existing collection, or None when it cannot be read."""
+    try:
+        vectors = qdrant_client.get_collection(collection_name).config.params.vectors
+        return getattr(vectors, "size", None)
+    except Exception as e:
+        logfire.warning(f"Could not read config for collection '{collection_name}': {e}")
+        return None
+
+
+def _read_index_fingerprint():
+    if not os.path.exists(INDEX_META_PATH):
+        return None
+    try:
+        with open(INDEX_META_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logfire.warning(f"Could not read {INDEX_META_PATH}: {e}")
+        return None
+
+
+def _check_index_fingerprint(info: dict):
+    """Warn when the existing index was built with a different embedding backend."""
+    previous = _read_index_fingerprint()
+    if not previous:
+        return
+    previous_key = (previous.get("provider"), previous.get("model"), previous.get("dim"))
+    current_key = (info["provider"], info["model"], info["dim"])
+    if previous_key != current_key:
+        logfire.warning(
+            f"⚠️ Existing index was built with {previous_key[0]}/{previous_key[1]} "
+            f"({previous_key[2]}-dim) but the active backend is {current_key[0]}/"
+            f"{current_key[1]} ({current_key[2]}-dim). Vector spaces are not "
+            f"interchangeable — re-run ingestion with --wipe."
+        )
+
+
+def _save_index_fingerprint(info: dict):
+    try:
+        os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+        with open(INDEX_META_PATH, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "collection": settings.QDRANT_COLLECTION,
+                    "provider": info["provider"],
+                    "model": info["model"],
+                    "dim": info["dim"],
+                    "fallback": info["fallback"],
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                f,
+                indent=2,
+            )
+    except Exception as e:
+        logfire.warning(f"Could not write {INDEX_META_PATH}: {e}")
 
 
 def save_processed_locally(data: dict, source_type: str, filename: str) -> str:
@@ -124,20 +188,40 @@ def run_universal_ingestion(base_dir: str, explicit_source_type: str = None, wip
                     qdrant_client.delete_collection(settings.QDRANT_COLLECTION)
                     logfire.info(f"Collection '{settings.QDRANT_COLLECTION}' deleted.")
 
-        # Recreate collection — dimension resolved at runtime after embedding model probe
+        # Resolve the active embedding backend once — the dimension is probed
+        # from the live provider, not hard-coded.
+        info = active_embedding_info()
+        logfire.info(
+            f"Embedding backend: {info['provider']}/{info['model']} ({info['dim']}-dim)"
+            + (" [LOCAL FALLBACK]" if info["fallback"] else "")
+        )
+        if info["probe_error"]:
+            logfire.warning(f"Embedding probe error: {info['probe_error']}")
+        _check_index_fingerprint(info)
+
+        # Recreate collection if missing; refuse to write into a mismatched one.
         if not qdrant_client.collection_exists(settings.QDRANT_COLLECTION):
-            dim = get_embedding_dim()
             qdrant_client.create_collection(
                 collection_name=settings.QDRANT_COLLECTION,
                 vectors_config=models.VectorParams(
-                    size=dim,
+                    size=info["dim"],
                     distance=models.Distance.COSINE,
                 ),
             )
             logfire.info(
                 f"Created collection '{settings.QDRANT_COLLECTION}' "
-                f"({dim}-dim, Cosine)."
+                f"({info['dim']}-dim, Cosine)."
             )
+        else:
+            existing_dim = _collection_dim(settings.QDRANT_COLLECTION)
+            if existing_dim is not None and existing_dim != info["dim"]:
+                raise RuntimeError(
+                    f"Collection '{settings.QDRANT_COLLECTION}' is {existing_dim}-dim but the "
+                    f"active embedding backend ({info['provider']}/{info['model']}) produces "
+                    f"{info['dim']}-dim vectors. Qdrant vector size is immutable — recreate and "
+                    f"re-index with:\n"
+                    f"    python -m app.ingestion.processor {base_dir} --wipe"
+                )
 
         # Route to sub-folders or treat the whole dir as one source
         subdirs = [
@@ -165,6 +249,9 @@ def run_universal_ingestion(base_dir: str, explicit_source_type: str = None, wip
                     else subdir
                 )
                 process_directory(os.path.join(base_dir, subdir), source_type)
+
+        # Record which backend built the index so provider swaps are detectable.
+        _save_index_fingerprint(info)
 
 
 if __name__ == "__main__":

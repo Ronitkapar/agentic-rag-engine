@@ -12,9 +12,10 @@ numpy                       # Numerical processing
 pytz                        # Timezone handling for logs
 nest-asyncio                # Support for nested async loops in notebooks/streamlit
 
-# --- GEMINI EMBEDDINGS ---
-google-generativeai         # Gemini API — embeddings (text-embedding-004 / gemini-embedding-001)
-langchain-google-genai      # LangChain integration for Gemini models
+# --- EMBEDDINGS ---
+# Backend is selected at runtime via EMBEDDING_PROVIDER=aicredits | local.
+# The AICredits gateway backend (default) rides on langchain-openai, which is
+# already required below for the Portkey gateway; "local" uses sentence-transformers.
 
 # --- VECTOR DB & RETRIEVAL ---
 qdrant-client               # Vector Database for semantic search
@@ -55,7 +56,4 @@ deepeval                    # Pytest-compatible test runner wrapping RAGAS & saf
 langfuse                    # Live production monitoring, tracing & user feedback collection
 
 # --- EMBEDDINGS (SENTENCE TRANSFORMERS) ---
-sentence-transformers       # Used by FlashRank reranker internally
-langchain_google_genai
-
-langchain-google-vertexai
+sentence-transformers       # FlashRank reranker + EMBEDDING_PROVIDER=local offline fallback

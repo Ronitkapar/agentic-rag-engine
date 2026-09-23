@@ -1,0 +1,8 @@
+{
+  "collection": "rag-app",
+  "provider": "aicredits",
+  "model": "text-embedding-3-large",
+  "dim": 3072,
+  "fallback": false,
+  "updated_at": "2026-09-23T17:20:01.162106+00:00"
+}
