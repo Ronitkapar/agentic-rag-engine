@@ -9,6 +9,25 @@ from app.guardrails.colang_rules import COLANG_CONTENT, YAML_CONTENT, RAIL_INDIC
 _rails: LLMRails | None = None
 
 
+def _render_yaml_content() -> str:
+    """Substitute runtime secrets into the YAML template.
+
+    The `type: embeddings` block routes NeMo's user-message index (intent
+    classification over the `define user` examples) through the AICredits
+    gateway. Without it NeMo loads a local ~305 MB fastembed ONNX model on the
+    first request — fatal on Render's 512 MB free tier.
+    """
+    return (
+        YAML_CONTENT
+        .replace("{{AICREDITS_BASE_URL}}", settings.AICREDITS_BASE_URL or "")
+        .replace("{{AICREDITS_API_KEY}}", settings.AICREDITS_API_KEY or "")
+        .replace(
+            "{{AICREDITS_EMBEDDING_MODEL}}",
+            settings.AICREDITS_EMBEDDING_MODEL or "",
+        )
+    )
+
+
 def initialize_rails() -> None:
     """
     Build the NeMo LLMRails singleton at app startup.
@@ -25,7 +44,7 @@ def initialize_rails() -> None:
 
     config = RailsConfig.from_content(
         colang_content=COLANG_CONTENT,
-        yaml_content=YAML_CONTENT
+        yaml_content=_render_yaml_content()
     )
 
     _rails = LLMRails(config, llm=guard_llm)
@@ -48,7 +67,17 @@ def guard(message: str) -> tuple[bool, str | None]:
         return False, None
 
     with logfire.span("🛡️ Guardrails Check"):
-        result = _rails.generate(messages=[{"role": "user", "content": message}])
+        try:
+            result = _rails.generate(messages=[{"role": "user", "content": message}])
+        except Exception as e:
+            # Availability first: if the gate itself errors (e.g. the AICredits
+            # embedding index provider is down), let the request continue with a
+            # loud warning instead of failing the whole query. Retrieval and
+            # synthesis are unaffected by the gate.
+            logfire.warning(
+                f"⚠️ Guardrail gate failed ({type(e).__name__}: {e}) — allowing request unguarded."
+            )
+            return False, None
 
         # NeMo returns {'role': 'assistant', 'content': '...'} — extract text
         content = result.get("content", "") if isinstance(result, dict) else str(result)

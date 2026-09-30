@@ -32,7 +32,6 @@ def _optional_int_env(name: str):
 
 class Settings:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-    GROQ_FALLBACK_API_KEY = os.getenv("GROQ_FALLBACK_API_KEY")
     # Groq decommissioned the llama-3.* chat models; current OpenAI-source models:
     GROQ_MODEL = "openai/gpt-oss-120b"        # main RAG synthesis / planner
     GROQ_GUARD_MODEL = "openai/gpt-oss-20b"   # fast guardrail intent gate
@@ -71,5 +70,22 @@ class Settings:
     EMBEDDING_ALLOW_LOCAL_FALLBACK = _bool_env("EMBEDDING_ALLOW_LOCAL_FALLBACK", "true")
     # Optional MRL truncation — only sent when the provider honours `dimensions`.
     EMBEDDING_DIMENSIONS = _optional_int_env("EMBEDDING_DIMENSIONS")
+
+    # --- Retrieval & reranking (Render-friendly defaults, all env-tunable) ---
+    # Qdrant candidates fetched before reranking. Each candidate costs one
+    # cross-encoder pass: measured ~1.7 core-seconds for 15 docs vs ~0.8 for 8 —
+    # matters on the free tier's 0.1 vCPU.
+    RETRIEVER_CANDIDATES = _int_env("RETRIEVER_CANDIDATES", "8")
+    # Chunks kept after reranking and passed to the responder.
+    RERANK_TOP_N = _int_env("RERANK_TOP_N", "5")
+    # FlashRank tokenises every passage up to max_length. Measured peak RSS
+    # deltas for a 15-doc batch: 512 -> +182 MB, 256 -> +44 MB, 128 -> +18 MB.
+    # 256 keeps a full query well inside a 512 MB instance.
+    RERANK_MAX_LENGTH = _int_env("RERANK_MAX_LENGTH", "256")
+    # Set false to skip the cross-encoder entirely (saves its RAM + CPU).
+    RERANK_ENABLED = _bool_env("RERANK_ENABLED", "true")
+    # Model cache dir. The deploy image pre-bakes the model to /opt/flashrank;
+    # /tmp/flashrank is the local-dev default (re-downloads ~3.3 MB if missing).
+    RERANK_CACHE_DIR = os.getenv("RERANK_CACHE_DIR", "/tmp/flashrank")
 
 settings = Settings()

@@ -1,9 +1,16 @@
+import logging
 import logfire
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 logfire.configure(token=os.getenv("LOGFIRE_TOKEN"))
+
+# Library noise off: NeMo logs every action/event and httpx every request at
+# INFO (~50 lines per query). Free-tier log volume is limited and these drown
+# out the app's own logfire events.
+for _logger in ("nemoguardrails", "httpx", "httpcore", "numexpr"):
+    logging.getLogger(_logger).setLevel(logging.WARNING)
 
 # Now safe to import app modules - logfire is already active
 from fastapi import FastAPI, Response
@@ -25,7 +32,14 @@ def startup_event():
 class QueryRequest(BaseModel):
     q: str
     thread_id: Optional[str] = "default_user"
-    
+    # How many prior user/assistant turns the CLIENT still holds for this
+    # thread. The in-process MemorySaver cannot tell "never seen this thread"
+    # from "saw it, then lost it" across a restart, so the client reports
+    # what it has; when that is non-zero but the server's history is empty,
+    # planner_node says the memory was lost instead of silently answering as
+    # if the thread were new. Optional so API callers can omit it.
+    client_turns: int = 0
+
     
 @app.get("/")
 def home():
@@ -62,6 +76,9 @@ def query(request: QueryRequest):
     
     # Configuration for Memory (Thread ID)
     config = {"configurable": {"thread_id": thread_id}}
+    # Pass the client's turn count through so planner_node can tell a genuinely
+    # new thread from one whose history was lost to a server restart.
+    config["configurable"]["client_turns"] = request.client_turns
     
     try:
         # Gate 1: NeMo Guardrails — blocks off-topic, jailbreaks, and handles dialog

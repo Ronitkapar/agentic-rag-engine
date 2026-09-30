@@ -9,7 +9,6 @@ python-dotenv               # For loading configuration from .env files
 requests                    # HTTP library for internal/external API calls
 streamlit                   # Frontend dashboard for the chat interface
 numpy                       # Numerical processing
-pytz                        # Timezone handling for logs
 nest-asyncio                # Support for nested async loops in notebooks/streamlit
 
 # --- EMBEDDINGS ---
@@ -25,8 +24,6 @@ flashrank                   # Ultra-fast local cross-encoder for semantic rerank
 langchain                   # Core LLM orchestration
 langgraph                   # State-machine logic for cyclic agent flows
 langchain-groq              # Integration for lightning-fast Llama 3.3 models
-langchain-google-vertexai   # Required shim for NeMo Guardrails internal import (no GCP credentials needed)
-langchain-community         # Community-contributed tools and loaders
 langchain-openai            # OpenAI-compatible layer (used by Portkey gateway)
 pydantic>=2.0.0             # Data validation and settings management
 
@@ -41,19 +38,18 @@ pdfplumber                  # Fallback PDF parser for scanned/complex layouts
 # --- OBSERVABILITY & DISTRIBUTED TRACING ---
 langsmith                   # Specialized tracing for LangChain/LangGraph
 logfire[fastapi,requests]   # Pydantic Logfire — FastAPI + requests instrumentation
-loguru                      # Enhanced logging for Python
 
 # --- GUARDRAILS ---
 nemoguardrails              # NVIDIA NeMo Guardrails for input/output safety rails
-langchain-nvidia-ai-endpoints # LangChain integration with NVIDIA AI Endpoints
 
 # --- LLM GATEWAY ---
 portkey-ai                  # Portkey Gateway for unified LLM routing, fallbacks & observability
 
 # --- EVALUATION (EVALS) ---
 ragas                       # RAG-specific evaluation metrics (Faithfulness, Relevancy, Recall)
-deepeval                    # Pytest-compatible test runner wrapping RAGAS & safety metrics
-langfuse                    # Live production monitoring, tracing & user feedback collection
+
+# --- TESTS ---
+pytest                      # Unit tests (tests/). Local/CI only — never the deploy image.
 
 # --- EMBEDDINGS (SENTENCE TRANSFORMERS) ---
 sentence-transformers       # FlashRank reranker + EMBEDDING_PROVIDER=local offline fallback

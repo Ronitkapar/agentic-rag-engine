@@ -1,2 +1,8 @@
 renv/
 .env
+
+# Kilo agent workspace — contains a 101 MB git worktree. Never commit.
+.kilo/
+CLAUDE.md
+.venv/
+__pycache__/

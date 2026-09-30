@@ -61,7 +61,6 @@ Create a `.env` file in the repository root with the following keys (values depe
 
 ```env
 GROQ_API_KEY=
-GROQ_FALLBACK_API_KEY=
 PORTKEY_API_KEY=
 PORTKEY_CONFIG_SLUG=
 USE_PORTKEY=false
@@ -74,6 +73,12 @@ AICREDITS_BASE_URL=https://api.aicredits.in/v1
 AICREDITS_EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_BATCH_SIZE=50
 EMBEDDING_ALLOW_LOCAL_FALLBACK=true
+# Retrieval / reranking — defaults sized for the 512 MB / 0.1 vCPU free tier
+RETRIEVER_CANDIDATES=8
+RERANK_TOP_N=5
+RERANK_MAX_LENGTH=256
+RERANK_ENABLED=true
+RERANK_CACHE_DIR=/tmp/flashrank
 LOGFIRE_TOKEN=
 BACKEND_URL=http://localhost:8000
 ```
@@ -109,6 +114,10 @@ streamlit run ui/app.py
 5) Open the UI at `http://localhost:8501` and the backend at `http://localhost:8000`.
 
 Docker (recommended for reproducible runs)
+
+Two image flavors:
+- **`Dockerfile`** (root) — slim **serving** image used by docker-compose and by Render. Installs `requirements-deploy.txt` (no torch/CUDA) and pre-bakes the FlashRank model to `/opt/flashrank`.
+- **`Dockerfile.streamlit`** — frontend image on `requirements-ui.txt` (streamlit + requests + logfire only).
 
 ```bash
 # First time / after code changes (rebuild images and start):
@@ -166,7 +175,7 @@ python -m app.ingestion.processor DATA --wipe
 | `EMBEDDING_PROVIDER` | Backend | Model | Dim | Notes |
 |---|---|---|---|---|
 | `aicredits` | api.aicredits.in `/v1/embeddings` | `text-embedding-3-large` | 3072 | **Default.** OpenAI-compatible gateway (₹ / UPI billing). Serves **only** OpenAI embedding models (`text-embedding-3-large/small/ada-002`). Every Gemini id returns `400 invalid model ID` (bare *and* `provider/`-prefixed) even though the public catalog (`/api/models`) advertises them with `supported_apis: ['embeddings']`; that route also rejects the `provider/model` prefix notation. |
-| `local` | sentence-transformers | `all-mpnet-base-v2` | 768 | Offline, no API key. Also the automatic fallback when the AICredits probe fails. |
+| `local` | sentence-transformers | `all-mpnet-base-v2` | 768 | Offline, no API key. Fallback when the AICredits probe fails (`EMBEDDING_ALLOW_LOCAL_FALLBACK=true`). **Full `requirements.txt` only** — absent from `requirements-deploy.txt`/the deploy image, and disabled there via `EMBEDDING_ALLOW_LOCAL_FALLBACK=false`. |
 
 Switching between the two requires re-ingesting with `--wipe` — the dims (3072 vs 768)
 and the model spaces both differ. The dim-guard and fingerprint warnings will tell you
@@ -177,6 +186,57 @@ Inspect the live backend at any time:
 ```bash
 python -c "from app.services.retrieval.embedding import active_embedding_info; print(active_embedding_info())"
 ```
+
+### Deploying to Render (free tier: 512 MB / 0.1 vCPU)
+
+The repo ships `render.yaml` (Blueprint) wired to the root slim Dockerfile. Measured peak RSS for one full `/query`:
+
+| Stage | RSS |
+|---|---|
+| `import app.main` (no torch in the image) | ~307 MB |
+| NeMo guard init + intent index via **AICredits** (not local ONNX) | +5 MB |
+| FlashRank `RERANK_MAX_LENGTH=256` @ 8 candidates | +44 MB |
+| Guard LLM + planner + retrieval + rerank + synthesis (**peak**) | **~440 MB** ✅ (512 MB limit) |
+
+Five changes make that fit — each was a measured OOM before:
+
+1. **No torch/sentence-transformers** in the deploy image (`requirements-deploy.txt`); the old import alone was 768 MB.
+2. **NeMo's user-message index uses AICredits embeddings** (`type: embeddings` block in `app/guardrails/colang_rules.py`). Unconfigured, NeMo loads a local fastembed ONNX model: **+305 MB** plus a model download on every cold start.
+3. **FlashRank `max_length` capped at 256** — the 512 default cost **+182 MB**.
+4. **8 retrieval candidates** instead of 15 — roughly halves cross-encoder CPU (~0.8 vs ~1.7 core-seconds; the tier only has 0.1 vCPU).
+5. **`EMBEDDING_ALLOW_LOCAL_FALLBACK=false`** — if AICredits is down, requests fail loudly instead of silently loading a ~700 MB local model.
+
+Steps:
+
+```bash
+# 1. Ingest locally — the deploy image has no ingestion deps; vectors live in
+#    your Qdrant Cloud collection:
+python -m app.ingestion.processor DATA --wipe
+
+# 2. Push the repo, then in Render: New → Blueprint → pick the repo.
+#    render.yaml defines the API service; the `sync: false` secrets are
+#    prompted in the dashboard (AICREDITS_API_KEY, GROQ_API_KEY, QDRANT_*,
+#    LOGFIRE_TOKEN, optional PORTKEY_*).
+
+# 3. Optional UI: uncomment the rag-app-ui service in render.yaml and set
+#    BACKEND_URL=https://rag-app-api.onrender.com
+```
+
+Reproduce Render's limits locally before deploying:
+
+```bash
+docker build -t rag-app-slim .
+docker run --rm --memory=512m --memory-swap=512m --cpus=0.1 \
+  --env-file .env -p 8000:8000 rag-app-slim
+# --memory-swap=512m disables swap so an OOM kills the container exactly like
+# Render would, instead of silently thrashing. Then: curl -m 300 localhost:8000/
+```
+
+Free-tier realities:
+
+- **Spin-down**: first request after ~15 min idle pays a cold start (Python import at 0.1 vCPU ≈ 30–90 s). No persistent disk — `/tmp` is wiped on restarts, which is why FlashRank is baked into the image and Qdrant Cloud holds the vectors.
+- **Latency**: expect ~15–40 s per `/query` on 0.1 vCPU. Guard/synthesis calls are network-bound; reranking and planning are CPU-bound. If that's too slow, the `0.5c-512mb` plan ($7/mo) gives 5× the CPU at the same 512 MB.
+- **Logs**: NeMo/httpx INFO logging is suppressed in `app/main.py` (NeMo alone emits ~50 lines/query) to stay within Render's log volume.
 
 - Add a new LLM provider: extend `app/gateway/` with a provider client and register it in the gateway
 - Update guardrails: modify or add rules in `app/guardrails/`

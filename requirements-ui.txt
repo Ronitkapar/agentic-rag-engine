@@ -1,0 +1,8 @@
+# Streamlit UI image requirements — the UI only talks HTTP to the backend API
+# (ui/app.py imports os, streamlit, requests, time, uuid, logfire, dotenv).
+# The previous setup installed the full requirements.txt into the UI image,
+# shipping torch + the whole ingestion/evals stack for zero benefit.
+streamlit                   # Frontend dashboard
+requests                    # Calls to the backend /query endpoint
+logfire                     # UI session tracing
+python-dotenv               # Loads BACKEND_URL / LOGFIRE_TOKEN

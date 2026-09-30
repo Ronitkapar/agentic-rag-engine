@@ -82,14 +82,38 @@ if prompt := st.chat_input("Ask about your documentation..."):
         # Assistant Response
         with st.chat_message("assistant", avatar=AI_AVATAR):
             with st.status("🔍 Agent is thinking...", expanded=True) as status:
+                # requests.post below is BLOCKING, so a spinner here would freeze
+                # rather than animate. Write the expectation into the status body
+                # instead, so a slow first query reads as "working" and not "hung".
+                st.caption(
+                    "⏳ Waiting for the backend. On a free-tier host the first "
+                    "request after ~15 min idle pays a cold start (imports + guard "
+                    "init) and can take 1–3 minutes."
+                )
                 try:
                     # DISTRIBUTED TRACE: Calling Backend
                     with logfire.span("📡 Calling RAG Backend"):
                         # Get backend URL from env, or default to local if not set
                         base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
                         url = f"{base_url}/query"
-                        payload = {"q": prompt, "thread_id": st.session_state.session_id}
-                        response = requests.post(url, json=payload, timeout=60)
+                        # 60s was sized for a warm backend. On Render's free tier
+                        # the first /query after a spin-down routinely exceeds that
+                        # on its own (README quotes 30-90s just for the Python
+                        # import at 0.1 vCPU, before any LLM call), and the UI
+                        # service can itself be waking from its own spin-down at
+                        # the same moment. 300s covers two chained cold starts;
+                        # exceeding it still raises cleanly into the except below.
+                        payload = {
+                            "q": prompt,
+                            "thread_id": st.session_state.session_id,
+                            # Report how many prior turns THIS client holds, so the
+                            # server can tell a genuinely new thread from one whose
+                            # in-process memory it lost to a restart.
+                            "client_turns": len(
+                                [m for m in st.session_state.messages if m["role"] == "user"]
+                            ) - 1,
+                        }
+                        response = requests.post(url, json=payload, timeout=300)
                         data = response.json()
                     
                     # Show Reasoning Steps from Backend

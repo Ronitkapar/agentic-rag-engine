@@ -97,6 +97,19 @@ models:
   - type: main
     engine: openai
     model: gpt-3.5-turbo
+  # NeMo builds an embedding index of every `define user` utterance example on
+  # its first generate(). Unconfigured it falls back to a LOCAL fastembed ONNX
+  # model — measured +305 MB RSS plus a model download per cold start, which
+  # OOMs a 512 MB free-tier instance. Point it at the AICredits OpenAI-compatible
+  # endpoint instead (verified: index built via POST /v1/embeddings, no local
+  # model loaded). The AICREDITS_* placeholders are substituted at startup in
+  # app/guardrails/rails.py — never hardcode the API key here.
+  - type: embeddings
+    engine: openai
+    model: {{AICREDITS_EMBEDDING_MODEL}}
+    parameters:
+      base_url: {{AICREDITS_BASE_URL}}
+      api_key: {{AICREDITS_API_KEY}}
 
 instructions:
   - type: general

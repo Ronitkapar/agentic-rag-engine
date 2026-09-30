@@ -1,15 +1,26 @@
 import logfire
 from qdrant_client import QdrantClient
-from qdrant_client.http import models
 from app.config import settings
 from app.services.retrieval.embedding import embed_query
 
+# Lazy initialization - the client is built on first use so that importing
+# app.main never depends on Qdrant being configured or reachable. An unset
+# QDRANT_CLUSTER_ENDPOINT used to raise at import time, which turned a missing
+# env var (or a brief Qdrant outage at boot) into a container crashloop
+# instead of a failed query. Mirrors _get_ranker() in ranking_service.py.
+_client = None
 
-# Initialize Qdrant Client
-client = QdrantClient(
-    url=settings.QDRANT_URL,
-    api_key=settings.QDRANT_API_KEY
-)
+
+def _get_client() -> QdrantClient:
+    """Initialize the Qdrant client lazily, once per process."""
+    global _client
+    if _client is None:
+        _client = QdrantClient(
+            url=settings.QDRANT_URL,
+            api_key=settings.QDRANT_API_KEY,
+        )
+    return _client
+
 
 def search_enterprise_knowledge(query: str, limit: int = 8):
     """
@@ -20,7 +31,7 @@ def search_enterprise_knowledge(query: str, limit: int = 8):
         query_vector = embed_query(query)
 
         # Using query_points - the modern standard for Qdrant
-        response = client.query_points(
+        response = _get_client().query_points(
             collection_name=settings.QDRANT_COLLECTION,
             query=query_vector,
             limit=limit,

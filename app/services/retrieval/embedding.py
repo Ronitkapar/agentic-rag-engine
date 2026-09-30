@@ -66,7 +66,17 @@ def _build_aicredits():
 
 def _build_local():
     """Offline sentence-transformers fallback — no network, no API key."""
-    from sentence_transformers import SentenceTransformer
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError as e:
+        # Slim deploy builds (Render image) intentionally omit the ~3.8 GB of
+        # torch/CUDA this would pull in. Fail with an actionable message instead
+        # of a bare ImportError inside the fallback path.
+        raise RuntimeError(
+            "EMBEDDING_PROVIDER=local requires sentence-transformers, which is not "
+            "installed in this build. Use EMBEDDING_PROVIDER=aicredits, or install "
+            "the full requirements.txt (not requirements-deploy.txt)."
+        ) from e
 
     logfire.info(
         f"Loading sentence-transformers ({settings.EMBEDDING_LOCAL_MODEL}) — offline fallback."

@@ -1,0 +1,80 @@
+# Render Blueprint — https://render.com/docs/infrastructure-as-code
+#
+# Free tier: 0.1 vCPU / 512 MB RAM, spins down after ~15 min idle.
+# The slim root Dockerfile + the settings below keep a full /query at a
+# measured peak of ~440 MB (verified locally under --memory=512m --cpus=0.1):
+#   - no torch/sentence-transformers in the image        (was 768 MB at import)
+#   - NeMo's intent index uses AICredits embeddings      (was +305 MB local ONNX)
+#   - FlashRank capped at max_length=256                 (was +182 MB at 512)
+#
+# Secrets marked `sync: false` prompt for a value in the Render Dashboard on
+# first sync — they are never stored in this file.
+services:
+  - type: web
+    name: rag-app-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      # Embeddings: fail loudly instead of loading a ~700 MB local model
+      - key: EMBEDDING_PROVIDER
+        value: aicredits
+      - key: EMBEDDING_ALLOW_LOCAL_FALLBACK
+        value: "false"
+      # Memory/CPU budget for the reranker + retriever
+      - key: RETRIEVER_CANDIDATES
+        value: "8"
+      - key: RERANK_TOP_N
+        value: "5"
+      - key: RERANK_MAX_LENGTH
+        value: "256"
+      - key: RERANK_ENABLED
+        value: "true"
+      - key: RERANK_CACHE_DIR
+        value: /opt/flashrank
+      # One compute thread —0.1 vCPU can't use parallel pools (numexpr/OMP
+      # otherwise spawn 12+ threads that just thrash the quota)
+      - key: NUMEXPR_MAX_THREADS
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      # Direct Groq calls only work with a *current* GROQ_API_KEY. Your local
+      # .env runs with USE_PORTKEY=true because the Portkey gateway is the
+      # verified-working chat path (a direct-Groq probe returned 401 Invalid
+      # API Key during testing). Flip to false once GROQ_API_KEY is refreshed —
+      # it saves one network hop per LLM call.
+      - key: USE_PORTKEY
+        value: "true"
+      # --- Secrets: set once in the Render Dashboard ---
+      - key: AICREDITS_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_CLUSTER_ENDPOINT
+        sync: false
+      - key: LOGFIRE_TOKEN
+        sync: false
+      # Optional Portkey gateway (only read when USE_PORTKEY=true)
+      - key: PORTKEY_API_KEY
+        sync: false
+      - key: PORTKEY_CONFIG_SLUG
+        sync: false
+
+  # ---------------------------------------------------------------------
+  # Optional Streamlit UI — native Python runtime (no Dockerfile needed).
+  # Uncomment after the API service exists, and set BACKEND_URL to the API
+  # service's public URL (https://rag-app-api.onrender.com).
+  # ---------------------------------------------------------------------
+  # - type: web
+  #   name: rag-app-ui
+  #   runtime: python
+  #   plan: free
+  #   buildCommand: pip install -r requirements-ui.txt
+  #   startCommand: streamlit run ui/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
+  #   envVars:
+  #     - key: BACKEND_URL
+  #       value: https://rag-app-api.onrender.com
+  #     - key: LOGFIRE_TOKEN
+  #       sync: false
