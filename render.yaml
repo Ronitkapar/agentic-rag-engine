@@ -32,6 +32,11 @@ services:
         value: "true"
       - key: RERANK_CACHE_DIR
         value: /opt/flashrank
+      # Guardrails: jailbreak regex pre-filter + refusal classifier that catches
+      # a refusal NeMo wrote in its own words (which substring matching misses).
+      # Set "false" to fall back to plain NeMo without a redeploy.
+      - key: GUARD_FALLBACK_ENABLED
+        value: "true"
       # One compute thread —0.1 vCPU can't use parallel pools (numexpr/OMP
       # otherwise spawn 12+ threads that just thrash the quota)
       - key: NUMEXPR_MAX_THREADS

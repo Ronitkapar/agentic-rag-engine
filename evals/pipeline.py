@@ -13,12 +13,53 @@ import os
 import requests
 import logfire
 
-API_URL = "http://localhost:8000/query"
+# Point this at a deployed backend to evaluate the live product instead of a
+# local one:  EVAL_API_URL=https://rag-app-api.onrender.com/query
+API_URL = os.getenv("EVAL_API_URL", "http://localhost:8000/query")
 RESPONSE_TRUNCATE = 300
 DELAY_BETWEEN_CALLS = 10   # seconds — stays within Groq RPM on the main key
-REQUEST_TIMEOUT = 120      # seconds — guardrails + LangGraph + Groq can take >60s
+
+# A free-tier Render instance sleeps after ~15 min idle and cold-starts in
+# 30-90s, so a remote target needs a longer timeout than a local one, and a
+# retry: the first request after an idle period can come back 502 while the
+# instance spins up. That is the platform, not the app under test.
+IS_REMOTE = not API_URL.startswith(("http://localhost", "http://127.0.0.1"))
+REQUEST_TIMEOUT = int(os.getenv("EVAL_REQUEST_TIMEOUT", "240" if IS_REMOTE else "120"))
+COLD_START_RETRIES = int(os.getenv("EVAL_COLD_START_RETRIES", "2" if IS_REMOTE else "0"))
+COLD_START_WAIT = 20       # seconds between cold-start retries
 
 
+def post_query(payload: dict) -> requests.Response:
+    """POST to /query, retrying the 502/503 that a waking instance returns.
+
+    Only retries a cold start — a 4xx or a genuine 500 propagates, because
+    silently re-running those would turn a real failure into a slow pass.
+    """
+    last_exc = None
+    for attempt in range(COLD_START_RETRIES + 1):
+        try:
+            resp = requests.post(API_URL, json=payload, timeout=REQUEST_TIMEOUT)
+            if resp.status_code in (502, 503) and attempt < COLD_START_RETRIES:
+                logfire.info(f"⏳ {resp.status_code} — instance may be cold-starting, retrying")
+                time.sleep(COLD_START_WAIT)
+                continue
+            return resp
+        except requests.exceptions.ConnectionError as e:
+            # A remote host that dropped the connection outright is usually
+            # still waking up, so it gets the same retry as a 502.
+            if attempt < COLD_START_RETRIES:
+                logfire.info(f"⏳ connection dropped ({e}) — retry {attempt + 1}")
+                time.sleep(COLD_START_WAIT)
+                continue
+            raise
+        except requests.exceptions.Timeout as e:
+            last_exc = e
+            if attempt < COLD_START_RETRIES:
+                logfire.info(f"⏳ timed out after {REQUEST_TIMEOUT}s — retry {attempt + 1}")
+                time.sleep(COLD_START_WAIT)
+                continue
+            raise
+    raise last_exc if last_exc else RuntimeError("query failed with no response")
 
 
 def detect_tool(thought_process: list) -> str:

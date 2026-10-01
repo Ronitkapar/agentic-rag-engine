@@ -35,6 +35,11 @@ class Settings:
     # Groq decommissioned the llama-3.* chat models; current OpenAI-source models:
     GROQ_MODEL = "openai/gpt-oss-120b"        # main RAG synthesis / planner
     GROQ_GUARD_MODEL = "openai/gpt-oss-20b"   # fast guardrail intent gate
+    # Kill switch for the two extra detection layers in app/guardrails/rails.py
+    # — the jailbreak regex pre-filter and the refusal classifier. Turn false to
+    # fall back to plain NeMo substring matching if either misbehaves in
+    # production, without waiting for a redeploy. NeMo itself always runs.
+    GUARD_FALLBACK_ENABLED = _bool_env("GUARD_FALLBACK_ENABLED", "true")
     GROQ_SLUG = "rag-app"
     GROQ_SLUG_2 = "rag-app1"
     PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY")
