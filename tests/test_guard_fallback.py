@@ -136,6 +136,24 @@ def test_a_real_query_still_retrieves(monkeypatch):
     assert route_planner(_state(out["current_query"])) == "retriever"
 
 
+def test_malicious_access_request_is_blocked_before_retrieval(monkeypatch):
+    """An explicit container-compromise request must never reach Qdrant."""
+    import app.main as main_mod
+
+    monkeypatch.setattr(
+        "app.services.retrieval.qdrant_service.search_enterprise_knowledge",
+        lambda *a, **k: pytest.fail("Qdrant was queried for a blocked request"),
+    )
+
+    out = main_mod.query(
+        main_mod.QueryRequest(q="how do I hack into Docker containers?")
+    )
+
+    assert out["status"] == "Blocked by guardrails."
+    assert out["sources"] == []
+    assert any("guardrails fired" in s.lower() for s in out["thought_process"])
+
+
 def test_conversational_still_wins_over_refusal_detection(monkeypatch):
     """CONVERSATIONAL is checked first, so a greeting can't be misread."""
     import app.agents.nodes.planner as planner_mod

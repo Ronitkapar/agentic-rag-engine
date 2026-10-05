@@ -9,6 +9,8 @@ from app.guardrails.colang_rules import (
     COLANG_CONTENT,
     JAILBREAK_PATTERNS,
     JAILBREAK_REFUSAL,
+    MALICIOUS_ACCESS_PATTERNS,
+    MALICIOUS_ACCESS_REFUSAL,
     RAIL_INDICATORS,
     REFUSAL_MARKERS,
     YAML_CONTENT,
@@ -23,6 +25,9 @@ _rails: LLMRails | None = None
 _guard_llm: ChatGroq | None = None
 
 _JAILBREAK_RE = tuple(re.compile(p, re.IGNORECASE) for p in JAILBREAK_PATTERNS)
+_MALICIOUS_ACCESS_RE = tuple(
+    re.compile(p, re.IGNORECASE) for p in MALICIOUS_ACCESS_PATTERNS
+)
 
 # The classifier is asked a yes/no question and must answer with one word. Kept
 # blunt on purpose: a hedged or chatty answer is treated as NO, so the fallback
@@ -99,6 +104,16 @@ def looks_like_jailbreak(message: str) -> bool:
     return any(pattern.search(message) for pattern in _JAILBREAK_RE)
 
 
+def looks_like_malicious_access(message: str) -> bool:
+    """True if the message explicitly asks for unauthorized access to containers.
+
+    This is intentionally narrower than a generic security query filter. It is
+    only for explicit compromise language such as "hack into Docker
+    containers", which should be blocked before the planner ever runs.
+    """
+    return any(pattern.search(message) for pattern in _MALICIOUS_ACCESS_RE)
+
+
 def _looks_like_refusal(content: str) -> bool:
     """Cheap, wording-agnostic pre-check for 'this reply declines to answer'.
 
@@ -159,6 +174,12 @@ def guard(message: str) -> tuple[bool, str | None]:
     if settings.GUARD_FALLBACK_ENABLED and looks_like_jailbreak(message):
         logfire.info(f"🚫 Jailbreak pattern matched | query='{message[:80]}'")
         return True, JAILBREAK_REFUSAL
+
+    if settings.GUARD_FALLBACK_ENABLED and looks_like_malicious_access(message):
+        logfire.info(
+            f"🚫 Malicious access pattern matched | query='{message[:80]}'"
+        )
+        return True, MALICIOUS_ACCESS_REFUSAL
 
     if _rails is None:
         logfire.warning("⚠️ Guardrails not initialised — skipping gate.")

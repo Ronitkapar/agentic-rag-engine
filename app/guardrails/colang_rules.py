@@ -139,6 +139,27 @@ RAIL_INDICATORS = [
     "I'm an Enterprise AI Assistant with deep expertise in",
 ]
 
+# Explicit malicious-access phrasing is blocked before NeMo runs. This keeps
+# obvious compromise requests from falling through to the planner, even if the
+# guard model would otherwise answer in a way that does not match a bot rail.
+MALICIOUS_ACCESS_PATTERNS = (
+  r"\bhack(?:\s+into)?\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bbreak\s+into\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bcompromise\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bexploit\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bpwn\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bgain\s+unauthori[sz]ed\s+access\s+to\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bsteal\s+secrets\s+from\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bdump\s+secrets\s+from\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+  r"\bexfiltrat(?:e|ion)\s+(?:the\s+|a\s+|an\s+)?(?:docker\s+)?containers?\b",
+)
+
+MALICIOUS_ACCESS_REFUSAL = (
+  "I can't help with breaking into or hacking Docker containers. If you're "
+  "trying to secure them, I can help with hardening, isolation, least "
+  "privilege, and audit checks."
+)
+
 # --- Refusal detection that survives a reworded refusal -------------------
 # RAIL_INDICATORS are verbatim prefixes of the `define bot` messages above, so
 # they only match when NeMo replays the configured wording. It doesn't always:
