@@ -49,10 +49,11 @@ if "messages" not in st.session_state:
 
 # LANDING PAGE 
 # Every capability listed here is implemented in this repo (agent graph,
-# guardrails, Qdrant + FlashRank retrieval, MemorySaver, ingestion loaders).
-# Keep this list in sync with the code rather than the README's feature list,
-# which advertises a Prometheus /metrics endpoint, API-key auth and LangSmith
-# tracing that app/ does not actually contain.
+# guardrails, Qdrant + FlashRank retrieval, MemorySaver, ingestion loaders,
+# RAGAS eval pipeline). Keep the list in sync with the code: the README
+# previously advertised a Prometheus /metrics endpoint, API-key auth and
+# LangSmith tracing that app/ never implemented, and those claims have been
+# removed from it — don't reintroduce them here.
 _CAPABILITIES = [
     (
         "🧭 Agentic planning",
@@ -128,6 +129,17 @@ def render_landing():
                 with st.container(border=True):
                     st.markdown(f"**{heading}**")
                     st.caption(body)
+
+    # The eval suite is a real part of the project but a visitor never meets it
+    # inside the chat, so it gets its own callout rather than a grid cell.
+    with st.container(border=True):
+        st.markdown("**📊 RAGAS evaluation suite**")
+        st.caption(
+            "Faithfulness, Answer Relevancy, Context Precision, Context Recall and "
+            "Answer Correctness, plus a zero-LLM Jaccard tool-correctness check. It "
+            "judges through a separate key so eval traffic never drains the "
+            "production budget."
+        )
 
     st.markdown("---")
     st.caption(
