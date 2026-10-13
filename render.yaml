@@ -68,18 +68,22 @@ services:
         sync: false
 
   # ---------------------------------------------------------------------
-  # Optional Streamlit UI — native Python runtime (no Dockerfile needed).
-  # Uncomment after the API service exists, and set BACKEND_URL to the API
-  # service's public URL (https://rag-app-api.onrender.com).
+  # Streamlit UI — native Python runtime (no image build needed; the UI
+  # only needs requirements-ui.txt, never the ingestion/evals stack).
+  # Opens on the landing page and switches to the chat in-session, so the
+  # first paint does not wait on the API's cold start.
   # ---------------------------------------------------------------------
-  # - type: web
-  #   name: rag-app-ui
-  #   runtime: python
-  #   plan: free
-  #   buildCommand: pip install -r requirements-ui.txt
-  #   startCommand: streamlit run ui/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
-  #   envVars:
-  #     - key: BACKEND_URL
-  #       value: https://rag-app-api.onrender.com
-  #     - key: LOGFIRE_TOKEN
-  #       sync: false
+  - type: web
+    name: rag-app-ui
+    runtime: python
+    pythonVersion: "3.11"
+    plan: free
+    buildCommand: pip install -r requirements-ui.txt
+    startCommand: streamlit run ui/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false --server.enableXsrfProtection true
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: BACKEND_URL
+        value: https://rag-app-api.onrender.com
+      # --- Secrets: set once in the Render Dashboard ---
+      - key: LOGFIRE_TOKEN
+        sync: false
