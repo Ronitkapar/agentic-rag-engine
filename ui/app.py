@@ -28,7 +28,7 @@ except Exception as e:
 
 # PAGE CONFIG
 st.set_page_config(
-    page_title="Enterprise Agentic RAG",
+    page_title="Agentic RAG Engine",
     page_icon="🤖",
     layout="wide",
 )
@@ -45,6 +45,113 @@ if "session_id" not in st.session_state:
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+
+# LANDING PAGE 
+# Every capability listed here is implemented in this repo (agent graph,
+# guardrails, Qdrant + FlashRank retrieval, MemorySaver, ingestion loaders).
+# Keep this list in sync with the code rather than the README's feature list,
+# which advertises a Prometheus /metrics endpoint, API-key auth and LangSmith
+# tracing that app/ does not actually contain.
+_CAPABILITIES = [
+    (
+        "🧭 Agentic planning",
+        "A LangGraph planner reads the conversation *before* anything is "
+        "searched, then routes the turn: search the documents, answer from "
+        "memory, or decline.",
+    ),
+    (
+        "🎯 Vector search + reranking",
+        "Qdrant returns 8 candidate chunks; a local FlashRank cross-encoder "
+        "rescores them and keeps the top 5, so noise is dropped before the "
+        "answer is written.",
+    ),
+    (
+        "🛡️ Guardrails on every query",
+        "NeMo Guardrails, plus a regex pre-filter, block off-topic, "
+        "prompt-injection and malicious-access requests before retrieval runs.",
+    ),
+    (
+        "🧠 Conversational memory",
+        "A session-scoped checkpointer keeps follow-up questions in context — "
+        "and says so when a server restart has cost it that memory.",
+    ),
+    (
+        "🔍 Visible reasoning & sources",
+        "The chat streams the agent's step-by-step plan and the exact chunks "
+        "retrieved, so you can check the evidence behind every answer.",
+    ),
+    (
+        "📄 Local document ingestion",
+        "PDF, HTML, TXT, DOCX and PPTX are parsed and chunked on-device — no "
+        "external OCR service — then embedded into Qdrant.",
+    ),
+]
+
+
+def render_landing():
+    """Project intro shown by default. Sets view='chat' when Try It is clicked."""
+    # Hero — centred and width-capped so the paragraph keeps a readable measure.
+    _, hero, _ = st.columns([1, 4, 1])
+
+    with hero:
+        st.markdown("### 🤖 Agentic RAG Engine")
+        st.title("An agent that decides when to search — and shows its work.")
+        st.markdown(
+            "Ordinary retrieval-augmented generation embeds every question and "
+            "hopes the top chunks are useful. **Agentic** RAG puts a decision "
+            "step in front: a planner reads the conversation first and chooses "
+            "between answering from memory, searching your documents, or "
+            "declining. When it does search, a vector store returns candidate "
+            "passages and a cross-encoder reranks them, so only genuinely "
+            "relevant evidence reaches the model."
+        )
+        st.markdown(
+            "This project wires that together end to end — orchestration, "
+            "retrieval, guardrails, memory and tracing — behind a single chat "
+            "window, and shows you every step it took."
+        )
+
+        if st.button("🚀 Try It", type="primary", width="stretch"):
+            st.session_state.view = "chat"
+            st.rerun()
+
+        st.caption('e.g. "How do I autoscale pods?" · "What does a CronJob do?"')
+
+    st.markdown("---")
+    st.subheader("What it actually does")
+
+    # 3×2 grid; Streamlit stacks the columns vertically on narrow screens.
+    for row_start in (0, 3):
+        for col, (heading, body) in zip(st.columns(3), _CAPABILITIES[row_start:row_start + 3]):
+            with col:
+                with st.container(border=True):
+                    st.markdown(f"**{heading}**")
+                    st.caption(body)
+
+    st.markdown("---")
+    st.caption(
+        "Stack · LangGraph · Groq gpt-oss-120b / gpt-oss-20b · Qdrant · "
+        "FlashRank · NeMo Guardrails · Logfire · RAGAS evaluations · Streamlit"
+    )
+    st.caption("Domain scope · Kubernetes · Intel hardware · Enterprise networking")
+
+
+# VIEW ROUTING 
+# 'view' lives in session state so the selected page survives reruns. The
+# chat below is left byte-identical; st.stop() simply prevents it from
+# running while the landing page is showing.
+if "view" not in st.session_state:
+    st.session_state.view = "landing"
+
+if st.session_state.view == "landing":
+    render_landing()
+    st.stop()
+
+with st.sidebar:
+    if st.button("← Back to Home", width="stretch"):
+        st.session_state.view = "landing"
+        st.rerun()
 
 
 # SIDEBAR 
